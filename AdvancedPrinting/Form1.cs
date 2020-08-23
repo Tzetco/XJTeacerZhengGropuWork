@@ -15,6 +15,9 @@ using devDept.Geometry;
 using devDept.Eyeshot.Labels;
 using Environment = devDept.Eyeshot.Environment;
 using Point = System.Drawing.Point;
+using devDept.Controls.WinForms;
+using devDept.Eyeshot.Translators;
+using devDept.Serialization;
 
 namespace WindowsApplication1
 {
@@ -24,6 +27,8 @@ namespace WindowsApplication1
 
         private MyHiddenLinesViewPrint hdlView1, hdlView2;
 
+        private bool _yAxisUp = false;
+
         // Pens used to draw the lines
         private Pen PenEdge, PenSilho, PenWire;
 
@@ -32,6 +37,8 @@ namespace WindowsApplication1
             InitializeComponent();
 
             // model1.Unlock(""); // For more details see 'Product Activation' topic in the documentation.
+            model1.WorkCompleted += model2_WorkCompleted;
+
 
         }
 
@@ -55,13 +62,15 @@ namespace WindowsApplication1
             model1.ZoomFit();
 
             // Imports an Ascii model
-            devDept.Eyeshot.Translators.ReadFile rf = new devDept.Eyeshot.Translators.ReadFile("../../../../../../dataset/Assets/house.eye");
+            
+         /*   devDept.Eyeshot.Translators.ReadFile rf = new devDept.Eyeshot.Translators.ReadFile("../../../../../../dataset/Assets/house.eye");
             rf.DoWork();
             model1.Entities.AddRange(rf.Entities, Color.Gray);
+            
 
             // Changes the color/material of the fifth entity
-            rf.Entities[5].Color = Color.Pink;
-
+            rf.Entities[5].Color = Color.Pink;*/
+            
             model1.ZoomFit();
             comboBoxPrintMode.SelectedIndex = 0;
         }
@@ -295,6 +304,171 @@ namespace WindowsApplication1
             model1.Viewports[0].Camera = oldCamera;
             model1.Refresh();
         }
+
+      
+
+        private void importButton_Click(object sender, EventArgs e)
+        {
+            using (var importFileDialog1 = new OpenFileDialog())
+            using (var importFileAddOn = new ImportFileAddOn())
+            {
+                string theFilter = "All compatible file types (*.*)|*.asc;*.stl;*.obj;*.las;*.3ds"
+#if NURBS 
+                               + ";*.igs;*.iges;*.stp;*.step"
+#endif
+
+#if SOLID
+                               + ";*.ifc;*.ifczip"
+#endif
+                               + "|Points (*.asc)|*.asc|" + "WaveFront OBJ (*.obj)|*.obj|" + "Stereolithography (*.stl)|*.stl|" + "Laser LAS (*.las)|*.las|" + "3D Studio Max (*.3ds)|*.3ds";
+#if NURBS
+                theFilter += "|IGES (*.igs; *.iges)|*.igs; *.iges|" + "STEP (*.stp; *.step)|*.stp; *.step";
+#endif
+
+#if SOLID
+                theFilter += "|IFC (*.ifc; *.ifczip)|*.ifc; *.ifczip";
+#endif
+                importFileDialog1.Filter = theFilter;
+
+                importFileDialog1.Multiselect = false;
+                importFileDialog1.AddExtension = true;
+                importFileDialog1.CheckFileExists = true;
+                importFileDialog1.CheckPathExists = true;
+
+                if (importFileDialog1.ShowDialog(importFileAddOn, this) == DialogResult.OK)
+                {
+                    model1.Clear();
+                    _yAxisUp = importFileAddOn.YAxisUp;
+
+                    ReadFileAsync rfa = getReader(importFileDialog1.FileName);
+
+                    if (rfa != null)
+                    {
+                        model1.StartWork(rfa);
+
+                        model1.SetView(viewType.Trimetric, true, model1.AnimateCamera);
+
+                        /*openButton.Enabled = false;
+                        saveButton.Enabled = false;
+                        importButton.Enabled = false;*/
+                    }
+                }
+            }
+        }
+
+        private ReadFileAsync getReader(string fileName)
+        {
+            string ext = System.IO.Path.GetExtension(fileName);
+
+            if (ext != null)
+            {
+                ext = ext.TrimStart('.').ToLower();
+
+                switch (ext)
+                {
+                    case "asc":
+                        return new ReadASC(fileName);
+                    case "stl":
+                        return new ReadSTL(fileName);
+                    case "obj":
+                        return new ReadOBJ(fileName);
+                    case "las":
+                        return new ReadLAS(fileName);
+                    case "3ds":
+                        return new Read3DS(fileName);
+#if NURBS
+                    case "igs":
+                    case "iges":
+                        return new ReadIGES(fileName);
+                    case "stp":
+                    case "step":
+                        return new ReadSTEP(fileName);
+#endif
+#if SOLID
+                    case "ifc":
+                    case "ifczip":
+                        return new ReadIFC(fileName);
+#endif
+                }
+            }
+
+            return null;
+        }
+
+        private OpenFileAddOn _openFileAddOn;
+        private void openButton_Click(object sender, EventArgs e)
+        {
+            using (var openFileDialog1 = new OpenFileDialog())
+            {
+                openFileDialog1.Filter = "Eyeshot (*.eye)|*.eye";
+                openFileDialog1.Multiselect = false;
+                openFileDialog1.AddExtension = true;
+                openFileDialog1.CheckFileExists = true;
+                openFileDialog1.CheckPathExists = true;
+                openFileDialog1.DereferenceLinks = true;
+
+                _openFileAddOn = new OpenFileAddOn();
+                _openFileAddOn.EventFileNameChanged += OpenFileAddOn_EventFileNameChanged;
+
+                if (openFileDialog1.ShowDialog(_openFileAddOn, this) == DialogResult.OK)
+                {
+                    _yAxisUp = false;
+                    model1.Clear();
+                    ReadFile readFile = new ReadFile(openFileDialog1.FileName, (contentType)_openFileAddOn.ContentOption);
+                    model1.StartWork(readFile);
+                    model1.SetView(viewType.Trimetric, true, model1.AnimateCamera);
+                  //  openButton.Enabled = false;
+                }
+
+                _openFileAddOn.EventFileNameChanged -= OpenFileAddOn_EventFileNameChanged;
+                _openFileAddOn.Dispose();
+                _openFileAddOn = null;
+            }
+        }
+        private void model2_WorkCompleted(object sender, devDept.Eyeshot.WorkCompletedEventArgs e)
+        {
+            if(e.WorkUnit is ReadFileAsync)
+            {
+                ReadFileAsync rfa = (ReadFileAsync)e.WorkUnit;
+                rfa.AddToScene(model1);
+                model1.SetView(viewType.Trimetric, true, model1.AnimateCamera);
+            }
+        }
+
+        private void OpenFileAddOn_EventFileNameChanged(IWin32Window sender, string filePath)
+        {
+            if (System.IO.File.Exists(filePath))
+            {
+                ReadFile rf = new ReadFile(filePath, true);
+                _openFileAddOn.SetFileInfo(rf.GetThumbnail(), rf.GetFileInfo());
+            }
+            else
+            {
+                _openFileAddOn.ResetFileInfo();
+            }
+        }
+
+        private void eyeSaveButton_Click(object sender, EventArgs e)
+        {
+            using (var saveFileDialog = new SaveFileDialog())
+            using (var saveFileAddOn = new SaveFileAddOn())
+            {
+                saveFileDialog.Filter = "Eyeshot (*.eye)|*.eye";
+                saveFileDialog.AddExtension = true;
+                saveFileDialog.CheckPathExists = true;
+
+                if (saveFileDialog.ShowDialog(saveFileAddOn, this) == DialogResult.OK)
+                {
+                    WriteFile writeFile = new WriteFile(new WriteFileParams(model1) { Content = (contentType)saveFileAddOn.ContentOption, SerializationMode = (serializationType)saveFileAddOn.SerialOption, SelectedOnly = saveFileAddOn.SelectedOnly, Purge = saveFileAddOn.Purge }, saveFileDialog.FileName);
+                    model1.StartWork(writeFile);
+                   /* openButton.Enabled = false;
+                    saveButton.Enabled = false;
+                    importButton.Enabled = false;*/
+                }
+            }
+        }
+
+        
 
         private void ScaleImageSizeToPrintRect(RectangleF printRect, Size imageSize, out Size scaledSize)
         {

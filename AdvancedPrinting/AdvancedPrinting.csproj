@@ -58,6 +58,9 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="devDept.CustomControls.Win">
+      <HintPath>..\..\devDept.CustomControls.Win.dll</HintPath>
+    </Reference>
     <Reference Include="devDept.Eyeshot.Control.Win.v12">
       <HintPath>C:\Program Files\devDept Software\Eyeshot Ultimate 12\Bin\devDept.Eyeshot.Control.Win.v12.dll</HintPath>
     </Reference>
